@@ -1,0 +1,35 @@
+version: 2.1
+
+jobs:
+  update_deployment:
+    docker:
+      - image: circleci/python:3.9
+    steps:
+      - checkout
+      - run:
+          name: Install yq
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y yq
+      - run:
+          name: Update Deployment Image
+          command: |
+            # Update the image tag in your deployment.yaml file
+            yq eval '.spec.template.spec.containers[0].image = "registry.gitlab.com/your-username/your-repo:${CIRCLE_BUILD_NUM}-${CIRCLE_SHA1}"' -i path/to/deployment.yaml
+      - run:
+          name: Commit and Push Changes
+          command: |
+            git config --global user.email "eliyahos@gmail.com"
+            git config --global user.name "eli"
+            git commit -am "Update deployment image to ${CIRCLE_BUILD_NUM}-${CIRCLE_SHA1}"
+            git push origin main
+
+workflows:
+  version: 2
+  update:
+    jobs:
+      - update_deployment:
+          filters:
+            branches:
+              only:
+                - main
