@@ -13,10 +13,12 @@ spec:
         app: myapp
     spec:
       imagePullSecrets:
-        - name: dockerhub-secret  # Reference the Docker Hub secret here
+        - name: gitlab-registry-secret  # Reference your GitLab registry secret here
       containers:
         - name: myapp-container
-          image: "eliseror/new_repo:latest"  # Use your Docker Hub image
+          image: "registry.gitlab.com/eli3623142/circleci:80-b732c8fd3e915c60ffef4b05f0ab7260991968ae"  # Use your GitLab image
           ports:
             - containerPort: 8000  # Port your container listens on
+
+
 
