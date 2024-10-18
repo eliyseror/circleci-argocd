@@ -19,7 +19,7 @@ jobs:
       - name: Update Kubernetes Deployment
         run: |
           TAG="${{ github.event.client_payload.tag }}"  # Extract the tag from the payload
-          NEW_IMAGE="registry.gitlab.com/eli3623142/circleci:${TAG}"  # Construct the new image name
+          NEW_IMAGE="${TAG}"  # Construct the new image name
           echo "Updating image to: $NEW_IMAGE"
 
           # Update the image in the deployment.yaml
