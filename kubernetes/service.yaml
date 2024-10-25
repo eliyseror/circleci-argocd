@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: myapp
 spec:
-  type: NodePort  # Set your service type (e.g., ClusterIP, NodePort, etc.) LoadBalancer
+  type: LoadBalancer # Set your service type (e.g., ClusterIP, NodePort, etc.) LoadBalancer
   ports:
     - name: http
       port: 80  # Service port
