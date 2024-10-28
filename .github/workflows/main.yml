@@ -4,6 +4,7 @@ on:
   repository_dispatch:
     types: [dockerhub-push]
 
+
 jobs:
   update-image:
     runs-on: ubuntu-latest
