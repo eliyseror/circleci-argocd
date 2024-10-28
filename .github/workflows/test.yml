@@ -18,11 +18,10 @@ jobs:
 
       - name: Update Kubernetes Deployment
         run: |
-          TAG="${{ github.event.client_payload.tag }}"  # Extract the tag from the payload
-          NEW_IMAGE="${TAG}"  # Construct the new image name
+          TAG="${{ github.event.client_payload.tag }}"
+          NEW_IMAGE="${TAG}"
           echo "Updating image to: $NEW_IMAGE"
 
-          # Update the image in the deployment.yaml
           yq eval -i '.spec.template.spec.containers[0].image = "'$NEW_IMAGE'"' kubernetes/deployment.yaml
           echo "Updated image name in deployment.yaml to: $NEW_IMAGE"
 
@@ -32,9 +31,9 @@ jobs:
           git config --local user.email "eliyseror@gmail.com"
           git add kubernetes/deployment.yaml
           git commit -m "Update deployment image to ${NEW_IMAGE}" || echo "No changes to commit"
-          git push origin main  # Change 'main' to your default branch if necessary
+          git push origin main
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}  # Ensure this secret is set
+          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
 
       - name: Configure AWS CLI
         uses: aws-actions/configure-aws-credentials@v1
@@ -55,19 +54,18 @@ jobs:
       - name: Create Docker registry secret
         run: |
           DOCKER_SERVER="registry.gitlab.com"
-          DOCKER_USERNAME="${{ secrets.GITLAB_USERNAME }}"  # Your GitLab username from secret
-          DOCKER_PASSWORD="${{ secrets.GITLAB_TOKEN }}"     # Your GitLab token from secret
-          DOCKER_EMAIL="${{ secrets.GITLAB_EMAIL }}"        # Your GitLab email from secret
+          DOCKER_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
+          DOCKER_PASSWORD="${{ secrets.DOCKERHUB_TOKEN }}"
+          DOCKER_EMAIL="${{ secrets.DOCKERHUB_EMAIL }}"
+          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"  # Use the namespace from the payload
           SECRET_NAME="gitlab-registry-secret"
-          NAMESPACE="default"  # Change if using a different namespace
 
           kubectl create secret docker-registry $SECRET_NAME \
             --docker-server=$DOCKER_SERVER \
             --docker-username=$DOCKER_USERNAME \
             --docker-password=$DOCKER_PASSWORD \
             --docker-email=$DOCKER_EMAIL \
-            --namespace=$NAMESPACE 
-          echo "Docker registry secret created!"
+            --namespace=$DEST_NAMESPACE || echo "Secret $SECRET_NAME already exists in namespace $DEST_NAMESPACE"
 
       - name: Set up Argo CD credentials
         run: |
@@ -82,17 +80,17 @@ jobs:
       - name: Add GitHub repository to Argo CD
         run: |
           argocd repo add "https://github.com/eliyseror/circleci-argocd.git" \
-            --username "${{ secrets.GITHUB_USERNAME }}" \
-            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --username "${{ secrets.MY_GITHUB_USERNAME }}" \
+            --password "${{ secrets.MY_GITHUB_TOKEN }}" \
             --insecure-skip-server-verification
 
       - name: Create Argo CD application
         run: |
-          APP_NAME="my-app"  # The name of your application
-          REPO_URL="https://github.com/eliyseror/circleci-argocd.git"  # Your Git repository URL
-          REPO_PATH="kubernetes"  # Path to the app within the repo
-          DEST_NAMESPACE="default"  # Kubernetes namespace where the app will be deployed
-          DEST_SERVER="https://kubernetes.default.svc"  # Kubernetes API server (use the default for in-cluster)
+          APP_NAME="my-app"  
+          REPO_URL="https://github.com/eliyseror/circleci-argocd.git"
+          REPO_PATH="kubernetes"
+          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
+          DEST_SERVER="https://kubernetes.default.svc"
 
           argocd app create "$APP_NAME" \
             --repo "$REPO_URL" \
@@ -100,7 +98,7 @@ jobs:
             --dest-server "$DEST_SERVER" \
             --dest-namespace "$DEST_NAMESPACE" \
             --sync-policy automated \
-            --revision main  # Use main branch instead of HEAD
+            --revision main 
 
       - name: Sync the application
         run: |
@@ -111,4 +109,4 @@ jobs:
           argocd logout "$ARGOCD_SERVER"
 
       - name: Final message
-        run: echo "Application $APP_NAME created and synced!"
+        run: echo "Application $APP_NAME created and synced in namespace $DEST_NAMESPACE!"
