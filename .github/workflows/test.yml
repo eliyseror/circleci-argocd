@@ -1,0 +1,114 @@
+name: Handle Repository Dispatch
+
+on:
+  repository_dispatch:
+    types: [test]
+
+jobs:
+  update-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install yq
+        run: |
+          sudo snap install yq  # Install yq if not already installed
+
+      - name: Update Kubernetes Deployment
+        run: |
+          TAG="${{ github.event.client_payload.tag }}"  # Extract the tag from the payload
+          NEW_IMAGE="${TAG}"  # Construct the new image name
+          echo "Updating image to: $NEW_IMAGE"
+
+          # Update the image in the deployment.yaml
+          yq eval -i '.spec.template.spec.containers[0].image = "'$NEW_IMAGE'"' kubernetes/deployment.yaml
+          echo "Updated image name in deployment.yaml to: $NEW_IMAGE"
+
+      - name: Commit changes
+        run: |
+          git config --local user.name "GitHub Action"
+          git config --local user.email "eliyseror@gmail.com"
+          git add kubernetes/deployment.yaml
+          git commit -m "Update deployment image to ${NEW_IMAGE}" || echo "No changes to commit"
+          git push origin main  # Change 'main' to your default branch if necessary
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}  # Ensure this secret is set
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name eli-eks --region eu-north-1
+
+      - name: Fetch Argo CD server address
+        id: fetch_argocd_server
+        run: |
+          echo "ARGOCD_SERVER=$(kubectl get service argocd-server -n argocd --output=jsonpath='{.status.loadBalancer.ingress[0].hostname}')" >> $GITHUB_ENV
+
+      - name: Create Docker registry secret
+        run: |
+          DOCKER_SERVER="registry.gitlab.com"
+          DOCKER_USERNAME="${{ secrets.GITLAB_USERNAME }}"  # Your GitLab username from secret
+          DOCKER_PASSWORD="${{ secrets.GITLAB_TOKEN }}"     # Your GitLab token from secret
+          DOCKER_EMAIL="${{ secrets.GITLAB_EMAIL }}"        # Your GitLab email from secret
+          SECRET_NAME="gitlab-registry-secret"
+          NAMESPACE="default"  # Change if using a different namespace
+
+          kubectl create secret docker-registry $SECRET_NAME \
+            --docker-server=$DOCKER_SERVER \
+            --docker-username=$DOCKER_USERNAME \
+            --docker-password=$DOCKER_PASSWORD \
+            --docker-email=$DOCKER_EMAIL \
+            --namespace=$NAMESPACE 
+          echo "Docker registry secret created!"
+
+      - name: Set up Argo CD credentials
+        run: |
+          ARGOCD_USERNAME="admin"  # Replace with your username
+          ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+          echo "ARGOCD_PASSWORD=${ARGOCD_PASSWORD}" >> $GITHUB_ENV
+
+      - name: Login to Argo CD
+        run: |
+          argocd login "$ARGOCD_SERVER" --username "$ARGOCD_USERNAME" --password "$ARGOCD_PASSWORD" --insecure
+
+      - name: Add GitHub repository to Argo CD
+        run: |
+          argocd repo add "https://github.com/eliyseror/circleci-argocd.git" \
+            --username "${{ secrets.GITHUB_USERNAME }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --insecure-skip-server-verification
+
+      - name: Create Argo CD application
+        run: |
+          APP_NAME="my-app"  # The name of your application
+          REPO_URL="https://github.com/eliyseror/circleci-argocd.git"  # Your Git repository URL
+          REPO_PATH="kubernetes"  # Path to the app within the repo
+          DEST_NAMESPACE="default"  # Kubernetes namespace where the app will be deployed
+          DEST_SERVER="https://kubernetes.default.svc"  # Kubernetes API server (use the default for in-cluster)
+
+          argocd app create "$APP_NAME" \
+            --repo "$REPO_URL" \
+            --path "$REPO_PATH" \
+            --dest-server "$DEST_SERVER" \
+            --dest-namespace "$DEST_NAMESPACE" \
+            --sync-policy automated \
+            --revision main  # Use main branch instead of HEAD
+
+      - name: Sync the application
+        run: |
+          argocd app sync "$APP_NAME"
+
+      - name: Logout from Argo CD (optional)
+        run: |
+          argocd logout "$ARGOCD_SERVER"
+
+      - name: Final message
+        run: echo "Application $APP_NAME created and synced!"
