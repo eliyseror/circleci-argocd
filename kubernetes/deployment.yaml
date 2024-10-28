@@ -16,6 +16,6 @@ spec:
         - name: gitlab-registry-secret # Reference your GitLab registry secret here
       containers:
         - name: myapp-container
-          image: "your_image_tag" # Use your GitLab image
+          image: "my-image" # Use your GitLab image
           ports:
             - containerPort: 8000 # Port your container listens on
