@@ -18,10 +18,11 @@ jobs:
 
       - name: Update Kubernetes Deployment
         run: |
-          TAG="${{ github.event.client_payload.tag }}"
-          NEW_IMAGE="${TAG}"
+          TAG="${{ github.event.client_payload.tag }}"  # Extract the tag from the payload
+          NEW_IMAGE="${TAG}"  # Construct the new image name
           echo "Updating image to: $NEW_IMAGE"
 
+          # Update the image in the deployment.yaml
           yq eval -i '.spec.template.spec.containers[0].image = "'$NEW_IMAGE'"' kubernetes/deployment.yaml
           echo "Updated image name in deployment.yaml to: $NEW_IMAGE"
 
@@ -30,10 +31,8 @@ jobs:
           git config --local user.name "GitHub Action"
           git config --local user.email "eliyseror@gmail.com"
           git add kubernetes/deployment.yaml
-          git commit -m "Update deployment image to ${NEW_IMAGE}" || echo "No changes to commit"
-          git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+          git commit -m "Update deployment image to ${NEW_IMAGE}"
+          git push origin main  # Change 'main' to your default branch if necessary
 
       - name: Configure AWS CLI
         uses: aws-actions/configure-aws-credentials@v1
