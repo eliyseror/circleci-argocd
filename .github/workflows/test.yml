@@ -181,7 +181,7 @@ jobs:
         run: |
           if [ "${{ env.LISTENER_ARN }}" == "None" ]; then
             LISTENER_ARN=$(aws elbv2 create-listener \
-              --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:<your-account-id>:loadbalancer/app/alb/a1ca35f7a5775050" \
+              --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" \
               --protocol HTTP \
               --port 8000 \
               --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
