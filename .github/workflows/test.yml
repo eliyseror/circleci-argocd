@@ -34,9 +34,17 @@ jobs:
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "eliyseror@gmail.com"
+      
+          # Stage changes
           git add test/deployment.yaml
-          git commit -m "Update deployment image to ${NEW_IMAGE}"
-          git push origin main  # Change 'main' to your default branch if necessary
+      
+          # Check for changes and commit if any
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update deployment image to ${NEW_IMAGE}"
+            git push origin main  # Change 'main' to your default branch if necessary
+          fi
 
       - name: Configure AWS CLI
         uses: aws-actions/configure-aws-credentials@v2
