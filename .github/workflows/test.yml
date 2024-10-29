@@ -70,7 +70,7 @@ jobs:
         run: |
           echo "ARGOCD_SERVER=$(kubectl get service argocd-server -n argocd --output=jsonpath='{.status.loadBalancer.ingress[0].hostname}')" >> $GITHUB_ENV
             
-      - name: Create Docker registry secret
+      - name: Create or Update Docker registry secret
         run: |
           DOCKER_SERVER="https://index.docker.io/v1/"  # Docker Hub registry
           DOCKER_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
@@ -79,13 +79,17 @@ jobs:
           DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"  # Use the namespace from the payload
           SECRET_NAME="dockerhub-registry-secret"  # Specify the secret name
       
-          # Create or replace the Docker registry secret
+          # Delete existing secret if it exists
+          kubectl delete secret $SECRET_NAME --namespace=$DEST_NAMESPACE || echo "No existing secret to delete."
+      
+          # Create the new Docker registry secret
           kubectl create secret docker-registry $SECRET_NAME \
             --docker-server=$DOCKER_SERVER \
             --docker-username=$DOCKER_USERNAME \
             --docker-password=$DOCKER_PASSWORD \
             --docker-email=$DOCKER_EMAIL \
-            --namespace=$DEST_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+            --namespace=$DEST_NAMESPACE
+
 
       - name: Set up Argo CD credentials
         run: |
