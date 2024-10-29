@@ -153,6 +153,37 @@ jobs:
       - name: Logout from Argo CD (optional)
         run: |
           argocd logout "$ARGOCD_SERVER"
+      - name: Create Target Group
+        id: create-target-group
+        run: |
+          TARGET_GROUP_ARN=$(aws elbv2 create-target-group \
+            --name myapp-target-group \
+            --protocol HTTP \
+            --port 8000 \
+            --vpc-id vpc-044fa56fcb2b16a8f \
+            --target-type ip \
+            --health-check-protocol HTTP \
+            --health-check-path /health \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+          echo "TARGET_GROUP_ARN=${TARGET_GROUP_ARN}" >> $GITHUB_ENV
 
+      - name: Register Targets
+        run: |
+          PODS=$(kubectl get pods -n ${{ github.event.client_payload.namespace }} -o jsonpath='{.items[*].status.podIP}')
+          for POD_IP in $PODS; do
+            aws elbv2 register-targets \
+              --target-group-arn $TARGET_GROUP_ARN \
+              --targets Id=$POD_IP
+          done
+
+      - name: Update Load Balancer (Optional)
+        run: |
+          # This step may not be necessary if your ALB is already set to use the target group.
+          # However, if you want to explicitly set listener rules or associate the target group, you can do so here.
+          LISTENER_ARN="arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050"  # Replace with your ALB listener ARN
+          aws elbv2 modify-listener \
+            --listener-arn $LISTENER_ARN \
+            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
       - name: Final message
         run: echo "Application $APP_NAME created and synced in namespace $DEST_NAMESPACE!"
