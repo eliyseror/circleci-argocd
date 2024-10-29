@@ -199,7 +199,7 @@ jobs:
       
             echo "Trying to create listener on port $PORT"
             LISTENER_ARN=$(aws elbv2 create-listener \
-              --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:***:loadbalancer/app/alb/a1ca35f7a5775050" \
+              --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" \
               --protocol HTTP \
               --port $PORT \
               --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
