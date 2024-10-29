@@ -97,18 +97,27 @@ jobs:
 
       - name: Login to Argo CD
         run: |
-          echo "Argo CD Username: $ARGOCD_USERNAME"
-          echo "Argo CD Password: $ARGOCD_PASSWORD"
-          echo "Argo CD server: $ARGOCD_SERVER"
-
           argocd login "$ARGOCD_SERVER" --username "$ARGOCD_USERNAME" --password "$ARGOCD_PASSWORD" --insecure
+          
       - name: Add GitHub repository to Argo CD
         run: |
           argocd repo add "https://github.com/eliyseror/circleci-argocd.git" \
             --username "${{ secrets.MY_GITHUB_USERNAME }}" \
             --password "${{ secrets.MY_GITHUB_TOKEN }}" \
             --insecure-skip-server-verification
-
+            
+      - name: Create Namespace
+        run: |
+          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
+          
+          # Create the namespace if it doesn't exist
+          if ! kubectl get namespace "$DEST_NAMESPACE"; then
+            kubectl create namespace "$DEST_NAMESPACE"
+            echo "Namespace $DEST_NAMESPACE created."
+          else
+            echo "Namespace $DEST_NAMESPACE already exists."
+          fi
+          
       - name: Create Argo CD application
         run: |
           APP_NAME="${{ github.event.client_payload.namespace }}-app"  
