@@ -28,7 +28,6 @@ jobs:
         run: |
           ALB_ARN="${{ secrets.ALB_ARN }}"
           LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[0].ListenerArn' --output text)
-
           if [ "$LISTENER_ARN" != "None" ]; then
             LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER_ARN" --query 'Listeners[0].Port' --output text)
             echo "LISTENER_PORT=${LISTENER_PORT}" >> $GITHUB_ENV
@@ -41,6 +40,7 @@ jobs:
       - name: Get Security Group ID
         id: get-security-group
         run: |
+          ALB_ARN="${{ secrets.ALB_ARN }}"
           SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].SecurityGroups[0]' --output text)
           echo "SECURITY_GROUP_ID=$SECURITY_GROUP_ID" >> $GITHUB_ENV
 
