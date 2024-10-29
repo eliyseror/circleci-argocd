@@ -79,8 +79,15 @@ jobs:
           DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"  # Use the namespace from the payload
           SECRET_NAME="dockerhub-registry-secret"  # Specify the secret name
       
+          # Debugging to check values (excluding sensitive data)
+          echo "Docker Username: $DOCKER_USERNAME"
+          echo "Docker Server: $DOCKER_SERVER"
+          echo "Docker Username: $DOCKER_USERNAME"
+          echo "Destination Namespace: $DEST_NAMESPACE"
+          echo "DOCKER_EMAIL: $DOCKER_EMAIL"
+
           # Delete existing secret if it exists
-          # kubectl delete secret $SECRET_NAME --namespace=$DEST_NAMESPACE || echo "No existing secret to delete."
+          #kubectl delete secret $SECRET_NAME --namespace=$DEST_NAMESPACE || echo "No existing secret to delete."
       
           # Create the new Docker registry secret
           kubectl create secret docker-registry $SECRET_NAME \
@@ -89,6 +96,7 @@ jobs:
             --docker-password="$DOCKER_PASSWORD" \
             --docker-email="$DOCKER_EMAIL" \
             --namespace="$DEST_NAMESPACE"
+
 
 
 
