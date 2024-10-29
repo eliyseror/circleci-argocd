@@ -1,0 +1,74 @@
+name: Delete Resources
+
+on:
+  repository_dispatch:
+    types: [delete]
+
+jobs:
+  delete-resources:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Display Payload
+        run: |
+          echo "Namespace: ${{ github.event.client_payload.namespace }}"
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+
+      - name: Get Listener ARN and Port by Namespace
+        id: get-listener
+        run: |
+          NAMESPACE="${{ github.event.client_payload.namespace }}"
+          # Assuming the listener ARN includes the namespace in its name
+          LISTENER_ARN=$(aws elbv2 describe-listeners --query "Listeners[?contains(ListenerArn, '$NAMESPACE')].ListenerArn" --output text)
+          
+          if [ "$LISTENER_ARN" != "None" ]; then
+            LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER_ARN" --query 'Listeners[0].Port' --output text)
+            echo "LISTENER_PORT=${LISTENER_PORT}" >> $GITHUB_ENV
+            echo "LISTENER_ARN=${LISTENER_ARN}" >> $GITHUB_ENV
+          else
+            echo "No listener found for namespace $NAMESPACE."
+            exit 1
+          fi
+
+      - name: Get Security Group ID
+        id: get-security-group
+        run: |
+          ALB_ARN="${{ secrets.ALB_ARN }}"
+          SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].SecurityGroups[0]' --output text)
+          echo "SECURITY_GROUP_ID=$SECURITY_GROUP_ID" >> $GITHUB_ENV
+
+      - name: Delete Security Group Ingress for Listener Port
+        run: |
+          SECURITY_GROUP_ID="${{ env.SECURITY_GROUP_ID }}"
+          LISTENER_PORT="${{ env.LISTENER_PORT }}"
+
+          # Remove ingress rule for the listener's port
+          if [ "$SECURITY_GROUP_ID" != "None" ]; then
+            aws ec2 revoke-security-group-ingress --group-id "$SECURITY_GROUP_ID" --protocol tcp --port "$LISTENER_PORT" --cidr 0.0.0.0/0 || echo "Ingress rule for port $LISTENER_PORT not found."
+          else
+            echo "No Security Group found for the ALB."
+          fi
+
+      - name: Delete Argo CD Application
+        run: |
+          NAMESPACE="${{ github.event.client_payload.namespace }}"
+          APP_NAME="${NAMESPACE}-app"
+          argocd login "${{ secrets.ARGOCD_SERVER }}" --username "${{ secrets.ARGOCD_USERNAME }}" --password "${{ secrets.ARGOCD_PASSWORD }}" --insecure
+          argocd app delete "$APP_NAME" --cascade --yes
+
+      - name: Delete Kubernetes Namespace
+        run: |
+          NAMESPACE="${{ github.event.client_payload.namespace }}"
+          kubectl delete namespace "$NAMESPACE"
+
+      - name: Final message
+        run: echo "Resources for namespace ${{ github.event.client_payload.namespace }} have been deleted."
