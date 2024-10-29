@@ -161,7 +161,7 @@ jobs:
             --query 'TargetGroups[0].TargetGroupArn' \
             --output text)
           echo "TARGET_GROUP_ARN=${TARGET_GROUP_ARN}" >> $GITHUB_ENV
-
+      
       - name: Register Targets
         run: |
           PODS=$(kubectl get pods -n ${{ github.event.client_payload.namespace }} -o jsonpath='{.items[*].status.podIP}')
@@ -170,14 +170,19 @@ jobs:
               --target-group-arn $TARGET_GROUP_ARN \
               --targets Id=$POD_IP
           done
-
-      - name: Update Load Balancer (Optional)
+      
+      - name: Update Load Balancer Listener
         run: |
-          # This step may not be necessary if your ALB is already set to use the target group.
-          # However, if you want to explicitly set listener rules or associate the target group, you can do so here.
-          LISTENER_ARN="arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050"  # Replace with your ALB listener ARN
+          # Get the listener ARN of your existing ALB
+          LISTENER_ARN=$(aws elbv2 describe-listeners \
+            --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" \
+            --query 'Listeners[0].ListenerArn' \
+            --output text)
+      
+          # Update the listener to use the new target group
           aws elbv2 modify-listener \
             --listener-arn $LISTENER_ARN \
             --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
+
       - name: Final message
         run: echo "Application $APP_NAME created and synced in namespace $DEST_NAMESPACE!"
