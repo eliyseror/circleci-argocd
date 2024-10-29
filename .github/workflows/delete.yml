@@ -88,19 +88,6 @@ jobs:
             aws elbv2 delete-listener --listener-arn "$LISTENER" || echo "Failed to delete listener: $LISTENER"
           done
 
-      - name: Delete Target Groups
-        run: |
-          # You will need to get the target group ARNs associated with the listeners
-          LISTENERS="${{ env.LISTENERS }}"
-          for LISTENER in $LISTENERS; do
-            TARGET_GROUP_ARN=$(aws elbv2 describe-listeners --listener-arn "$LISTENER" --query 'Listeners[0].DefaultActions[0].TargetGroupArn' --output text)
-            if [ "$TARGET_GROUP_ARN" != "None" ]; then
-              echo "Deleting target group: $TARGET_GROUP_ARN"
-              aws elbv2 delete-target-group --target-group-arn "$TARGET_GROUP_ARN" || echo "Failed to delete target group: $TARGET_GROUP_ARN"
-            else
-              echo "No target group found for listener: $LISTENER"
-            fi
-          done
 
       - name: Update kubeconfig
         run: |
