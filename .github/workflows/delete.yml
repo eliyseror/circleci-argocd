@@ -22,13 +22,25 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
-
+          
       - name: Install kubectl
         run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          STABLE_VERSION=$(curl -s https://dl.k8s.io/release/stable.txt)
+          echo "Stable Kubernetes version: $STABLE_VERSION"
+          
+          if [ -z "$STABLE_VERSION" ]; then
+            echo "Failed to retrieve the stable Kubernetes version."
+            exit 1
+          fi
+
+          KUBECTL_URL="https://dl.k8s.io/release/$STABLE_VERSION/bin/linux/amd64/kubectl"
+          echo "Downloading kubectl from: $KUBECTL_URL"
+          
+          curl -LO "$KUBECTL_URL"
           chmod +x ./kubectl
           sudo mv ./kubectl /usr/local/bin/kubectl
           kubectl version --client
+
           
       - name: Install Argo CD CLI
         run: |
