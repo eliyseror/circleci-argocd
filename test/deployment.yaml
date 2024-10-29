@@ -13,7 +13,7 @@ spec:
         app: myapp
     spec:
       imagePullSecrets:
-        - name: gitlab-registry-secret # Reference your GitLab registry secret here
+        - name: dockerhub-registry-secret # Reference your GitLab registry secret here
       containers:
         - name: myapp-container
           image: "eliseror/new_repo:argocd_8" # Use your GitLab image
