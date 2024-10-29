@@ -166,7 +166,7 @@ jobs:
         id: get-listener
         run: |
           LISTENER_ARN=$(aws elbv2 describe-listeners \
-            --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:<your-account-id>:loadbalancer/app/alb/a1ca35f7a5775050" \
+            --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" \
             --query 'Listeners[0].ListenerArn' \
             --output text)
       
