@@ -79,7 +79,11 @@ jobs:
               echo "Port $LISTENER_PORT not found in security group ingress rules."
             fi
           done
-
+          
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name eli-eks --region eu-north-1
+          
       - name: Set up Argo CD credentials
         run: |
           ARGOCD_USERNAME="admin"  # Replace with your username if different
