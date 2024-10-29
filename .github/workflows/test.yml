@@ -189,21 +189,23 @@ jobs:
       
           while true; do
             LISTENER_ARN=$(aws elbv2 create-listener \
-              --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" \
+              --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:***:loadbalancer/app/alb/a1ca35f7a5775050" \
               --protocol HTTP \
               --port $PORT \
               --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
               --query 'Listeners[0].ListenerArn' \
-              --output text 2>/dev/null)
+              --output text 2>&1)  # Capture both stdout and stderr
       
             if [ $? -eq 0 ]; then
               echo "Created new listener on port $PORT: ${LISTENER_ARN}"
               break
             else
-              echo "Port $PORT is already in use. Trying next port..."
+              echo "Error creating listener: $LISTENER_ARN"
+              echo "Port $PORT is already in use or there was another issue. Trying next port..."
               PORT=$((PORT + 1))  # Increment the port
             fi
           done
+
 
       - name: Update Security Group to Allow Traffic
         run: |
