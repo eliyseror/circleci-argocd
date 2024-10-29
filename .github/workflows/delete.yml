@@ -48,22 +48,28 @@ jobs:
         id: get-ingress-rules
         run: |
           SECURITY_GROUP_ID="${{ env.SECURITY_GROUP_ID }}"
-          INGRESS_RULES=$(aws ec2 describe-security-groups --group-ids "$SECURITY_GROUP_ID" --query "SecurityGroups[0].IpPermissions[].{FromPort:FromPort, ToPort:ToPort, IpProtocol:IpProtocol}" --output json)
+          INGRESS_RULES=$(aws ec2 describe-security-groups --group-ids "$SECURITY_GROUP_ID" --query "SecurityGroups[0].IpPermissions[].FromPort" --output text)
           echo "INGRESS_RULES=$INGRESS_RULES" >> $GITHUB_ENV
-
 
       - name: Revoke Security Group Ingress for Listener Ports
         run: |
           SECURITY_GROUP_ID="${{ env.SECURITY_GROUP_ID }}"
           LISTENERS="${{ env.LISTENERS }}"
+          IFS=' ' read -r -a PORTS <<< "${{ env.INGRESS_RULES }}"
 
           for LISTENER in $LISTENERS; do
             LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER" --query 'Listeners[0].Port' --output text)
             echo "Revoking ingress for port $LISTENER_PORT"
 
-            # Revoke the ingress rule for this port
-            aws ec2 revoke-security-group-ingress --group-id "$SECURITY_GROUP_ID" --protocol tcp --port "$LISTENER_PORT" --cidr 0.0.0.0/0 || echo "Ingress rule for port $LISTENER_PORT not found."
+            # Check if the listener port exists in the security group ingress rules
+            if [[ " ${PORTS[*]} " =~ " ${LISTENER_PORT} " ]]; then
+              # Revoke the ingress rule for this port
+              aws ec2 revoke-security-group-ingress --group-id "$SECURITY_GROUP_ID" --protocol tcp --port "$LISTENER_PORT" --cidr 0.0.0.0/0 || echo "Ingress rule for port $LISTENER_PORT not found."
+            else
+              echo "Port $LISTENER_PORT not found in security group ingress rules."
+            fi
           done
+
 
       - name: Delete Listeners
         run: |
