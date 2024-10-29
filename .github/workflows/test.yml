@@ -186,8 +186,17 @@ jobs:
           BASE_PORT=8000
           PORT=$BASE_PORT
           LISTENER_ARN=""
-      
+          
           while true; do
+            # Check existing listeners for the port
+            LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:***:loadbalancer/app/alb/a1ca35f7a5775050" --query "Listeners[?Port==\`${PORT}\`].ListenerArn" --output text)
+      
+            if [ -n "$LISTENERS" ]; then
+              echo "Port $PORT is already in use by an existing listener."
+              PORT=$((PORT + 1))  # Increment the port
+              continue
+            fi
+      
             echo "Trying to create listener on port $PORT"
             LISTENER_ARN=$(aws elbv2 create-listener \
               --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:***:loadbalancer/app/alb/a1ca35f7a5775050" \
@@ -205,14 +214,14 @@ jobs:
             else
               echo "Error creating listener: $LISTENER_ARN"
               echo "Exit code: $EXIT_CODE"
-              echo "Port $PORT is already in use or there was another issue. Trying next port..."
+              echo "There was an issue creating the listener. Trying next port..."
               PORT=$((PORT + 1))  # Increment the port
+            fi
       
-              # Optional: Break after a certain number of attempts to avoid infinite loop
-              if [ $PORT -gt 8100 ]; then
-                echo "Exceeded maximum port attempts. Exiting."
-                exit 1
-              fi
+            # Optional: Break after a certain number of attempts to avoid infinite loop
+            if [ $PORT -gt 8100 ]; then
+              echo "Exceeded maximum port attempts. Exiting."
+              exit 1
             fi
           done
 
