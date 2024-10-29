@@ -146,12 +146,15 @@ jobs:
       - name: Logout from Argo CD (optional)
         run: |
           argocd logout "$ARGOCD_SERVER"
-          
+      
       - name: Create Target Group
         id: create-target-group
         run: |
+          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
+          TARGET_GROUP_NAME="${DEST_NAMESPACE}-tg"  # Create target group name from namespace
+      
           TARGET_GROUP_ARN=$(aws elbv2 create-target-group \
-            --name myapp-target-group \
+            --name "$TARGET_GROUP_NAME" \
             --protocol HTTP \
             --port 8000 \
             --vpc-id vpc-044fa56fcb2b16a8f \
@@ -160,8 +163,9 @@ jobs:
             --health-check-path /health \
             --query 'TargetGroups[0].TargetGroupArn' \
             --output text)
-          echo "TARGET_GROUP_ARN=${TARGET_GROUP_ARN}" >> $GITHUB_ENV
-      
+    
+           echo "TARGET_GROUP_ARN=${TARGET_GROUP_ARN}" >> $GITHUB_ENV
+
       - name: Get Listener ARN
         id: get-listener
         run: |
@@ -179,18 +183,59 @@ jobs:
       
       - name: Create New Listener
         run: |
-          LISTENER_ARN=$(aws elbv2 create-listener \
-            --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" \
-            --protocol HTTP \
-            --port 8000 \
-            --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
-            --query 'Listeners[0].ListenerArn' \
+          BASE_PORT=8000
+          PORT=$BASE_PORT
+          LISTENER_ARN=""
+      
+          while true; do
+            LISTENER_ARN=$(aws elbv2 create-listener \
+              --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" \
+              --protocol HTTP \
+              --port $PORT \
+              --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
+              --query 'Listeners[0].ListenerArn' \
+              --output text 2>/dev/null)
+      
+            if [ $? -eq 0 ]; then
+              echo "Created new listener on port $PORT: ${LISTENER_ARN}"
+              break
+            else
+              echo "Port $PORT is already in use. Trying next port..."
+              PORT=$((PORT + 1))  # Increment the port
+            fi
+          done
+
+      - name: Update Security Group to Allow Traffic
+        run: |
+          ALB_ARN="arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050"
+          
+          # Get the Security Group associated with the ALB
+          SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers \
+            --load-balancer-arns "$ALB_ARN" \
+            --query 'LoadBalancers[0].SecurityGroups[0]' \
             --output text)
-            
-          if [ $? -eq 0 ]; then
-            echo "Created new listener: ${LISTENER_ARN}"
+      
+          if [ "$SECURITY_GROUP_ID" == "None" ]; then
+            echo "No Security Group found for the ALB."
+            exit 1
+          fi
+      
+          # Check if the port is already allowed in the security group
+          PORT=$((PORT))  # Use the last assigned port from the previous step
+          if ! aws ec2 describe-security-groups \
+            --group-ids "$SECURITY_GROUP_ID" \
+            --query "SecurityGroups[0].IpPermissions[?FromPort=='$PORT' && ToPort=='$PORT']" \
+            --output text | grep -q "ALLOWS"; then
+      
+            echo "Port $PORT is not open. Updating security group to allow traffic on this port."
+            # Allow all traffic on the specified port
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$SECURITY_GROUP_ID" \
+              --protocol tcp \
+              --port "$PORT" \
+              --cidr 0.0.0.0/0  # Open to all traffic (consider your security requirements)
           else
-            echo "Failed to create listener."
+            echo "Port $PORT is already open in the security group."
           fi
 
       
