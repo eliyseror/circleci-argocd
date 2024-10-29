@@ -124,9 +124,7 @@ jobs:
             --dest-namespace "$DEST_NAMESPACE" \
             --sync-policy manual \
             --revision main 
-
-      - name: Sync the application
-        run: |
+            
           argocd app sync "$APP_NAME"
 
       - name: Logout from Argo CD (optional)
