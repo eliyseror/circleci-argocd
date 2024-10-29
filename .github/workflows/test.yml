@@ -80,7 +80,7 @@ jobs:
           SECRET_NAME="dockerhub-registry-secret"  # Specify the secret name
       
           # Delete existing secret if it exists
-          kubectl delete secret gitlab-registry-secret --namespace=$DEST_NAMESPACE || echo "No existing secret to delete."
+          #kubectl delete secret gitlab-registry-secret --namespace=$DEST_NAMESPACE || echo "No existing secret to delete."
       
           # Create the new Docker registry secret
           kubectl create secret docker-registry $SECRET_NAME \
