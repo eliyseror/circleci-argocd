@@ -189,7 +189,7 @@ jobs:
           
           while true; do
             # Check existing listeners for the port
-            LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:***:loadbalancer/app/alb/a1ca35f7a5775050" --query "Listeners[?Port==\`${PORT}\`].ListenerArn" --output text)
+            LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:851725362124:loadbalancer/app/alb/a1ca35f7a5775050" --query "Listeners[?Port==\`${PORT}\`].ListenerArn" --output text)
       
             if [ -n "$LISTENERS" ]; then
               echo "Port $PORT is already in use by an existing listener."
