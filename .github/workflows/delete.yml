@@ -23,19 +23,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
 
-      - name: Get Listener ARN and Port by ALB ARN
-        id: get-listener
+      - name: Get Listener ARNs by ALB ARN
+        id: get-listeners
         run: |
           ALB_ARN="${{ secrets.ALB_ARN }}"
-          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[0].ListenerArn' --output text)
-          if [ "$LISTENER_ARN" != "None" ]; then
-            LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER_ARN" --query 'Listeners[0].Port' --output text)
-            echo "LISTENER_PORT=${LISTENER_PORT}" >> $GITHUB_ENV
-            echo "LISTENER_ARN=${LISTENER_ARN}" >> $GITHUB_ENV
-          else
-            echo "No listener found for load balancer $ALB_ARN."
+          LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[*].ListenerArn' --output text)
+          
+          if [ -z "$LISTENERS" ]; then
+            echo "No listeners found for load balancer $ALB_ARN."
             exit 1
           fi
+
+          echo "LISTENERS=$LISTENERS" >> $GITHUB_ENV
 
       - name: Get Security Group ID
         id: get-security-group
@@ -44,17 +43,26 @@ jobs:
           SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].SecurityGroups[0]' --output text)
           echo "SECURITY_GROUP_ID=$SECURITY_GROUP_ID" >> $GITHUB_ENV
 
-      - name: Delete Security Group Ingress for Listener Port
+      - name: Delete Security Group Ingress for All Listener Ports
         run: |
           SECURITY_GROUP_ID="${{ env.SECURITY_GROUP_ID }}"
-          LISTENER_PORT="${{ env.LISTENER_PORT }}"
+          LISTENERS="${{ env.LISTENERS }}"
+          PORTS=$(aws elbv2 describe-listeners --listener-arns $LISTENERS --query 'Listeners[*].Port' --output text)
 
-          # Remove ingress rule for the listener's port
           if [ "$SECURITY_GROUP_ID" != "None" ]; then
-            aws ec2 revoke-security-group-ingress --group-id "$SECURITY_GROUP_ID" --protocol tcp --port "$LISTENER_PORT" --cidr 0.0.0.0/0 || echo "Ingress rule for port $LISTENER_PORT not found."
+            for PORT in $PORTS; do
+              aws ec2 revoke-security-group-ingress --group-id "$SECURITY_GROUP_ID" --protocol tcp --port "$PORT" --cidr 0.0.0.0/0 || echo "Ingress rule for port $PORT not found."
+            done
           else
             echo "No Security Group found for the ALB."
           fi
+
+      - name: Delete Listeners
+        run: |
+          LISTENERS="${{ env.LISTENERS }}"
+          for LISTENER in $LISTENERS; do
+            aws elbv2 delete-listener --listener-arn "$LISTENER" || echo "Failed to delete listener $LISTENER."
+          done
 
       - name: Delete Argo CD Application
         run: |
