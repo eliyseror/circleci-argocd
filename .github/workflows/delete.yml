@@ -31,20 +31,40 @@ jobs:
           chmod +x argocd
           sudo mv argocd /usr/local/bin/
           argocd version --client
-
+          
       - name: Get Listener ARN and Port by ALB ARN
         id: get-listener
         run: |
           ALB_ARN="${{ secrets.ALB_ARN }}"
-          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[].ListenerArn' --output text)
-          if [ -n "$LISTENER_ARN" ]; then
-            echo "LISTENERS=${LISTENER_ARN}" >> $GITHUB_ENV
-            LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER_ARN" --query 'Listeners[0].Port' --output text)
-            echo "LISTENER_PORT=${LISTENER_PORT}" >> $GITHUB_ENV
-          else
-            echo "No listener found for load balancer $ALB_ARN."
+          
+          # Get listener ARNs
+          LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[].ListenerArn' --output text)
+          
+          # Check if LISTENERS is empty
+          if [ -z "$LISTENERS" ]; then
+            echo "No listeners found for load balancer $ALB_ARN."
             exit 1
           fi
+
+          # Print out listener ARNs for debugging
+          echo "LISTENERS: $LISTENERS"
+
+          # Loop through each listener ARN
+          IFS=' ' read -r -a LISTENER_ARN_ARRAY <<< "$LISTENERS"
+          for LISTENER_ARN in "${LISTENER_ARN_ARRAY[@]}"; do
+            # Trim whitespace
+            LISTENER_ARN=$(echo "$LISTENER_ARN" | xargs)
+            echo "Processing listener ARN: $LISTENER_ARN"
+
+            LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER_ARN" --query 'Listeners[0].Port' --output text)
+            if [ "$LISTENER_PORT" != "None" ]; then
+              echo "LISTENER_PORT=${LISTENER_PORT}" >> $GITHUB_ENV
+              echo "LISTENER_ARN=${LISTENER_ARN}" >> $GITHUB_ENV
+            else
+              echo "Could not retrieve port for listener ARN: $LISTENER_ARN"
+            fi
+          done
+
 
       - name: Get Security Group ID
         id: get-security-group
