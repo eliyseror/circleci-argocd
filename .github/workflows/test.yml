@@ -220,4 +220,47 @@ jobs:
 
       - name: Update Security Group to Allow Traffic
         run: |
-          ALB_ARN="${{ secrets.ALB_ARN
+          ALB_ARN="${{ secrets.ALB_ARN }}"
+          
+          # Get the Security Group associated with the ALB
+          SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers \
+            --load-balancer-arns "$ALB_ARN" \
+            --query 'LoadBalancers[0].SecurityGroups[0]' \
+            --output text)
+      
+          if [ "$SECURITY_GROUP_ID" == "None" ]; then
+            echo "No Security Group found for the ALB."
+            exit 1
+          fi
+      
+          # Use the port stored in the environment variable
+          PORT="${{ env.LISTENER_PORT }}"
+          
+          # Check if the port is already allowed in the security group
+          if ! aws ec2 describe-security-groups \
+            --group-ids "$SECURITY_GROUP_ID" \
+            --query "SecurityGroups[0].IpPermissions[?FromPort=='$PORT' && ToPort=='$PORT']" \
+            --output text | grep -q "ALLOWS"; then
+      
+            echo "Port $PORT is not open. Updating security group to allow traffic on this port."
+            # Allow all traffic on the specified port
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$SECURITY_GROUP_ID" \
+              --protocol tcp \
+              --port "$PORT" \
+              --cidr 0.0.0.0/0  # Open to all traffic (consider your security requirements)
+          else
+            echo "Port $PORT is already open in the security group."
+          fi
+      
+      - name: Register Targets
+        run: |
+          PODS=$(kubectl get pods -n ${{ github.event.client_payload.namespace }} -o jsonpath='{.items[*].status.podIP}')
+          for POD_IP in $PODS; do
+            aws elbv2 register-targets \
+              --target-group-arn $TARGET_GROUP_ARN \
+              --targets Id=$POD_IP
+          done
+
+      - name: Final message
+        run: echo "Application $APP_NAME created and synced in namespace $DEST_NAMESPACE!"
