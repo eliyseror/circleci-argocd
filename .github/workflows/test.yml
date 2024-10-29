@@ -122,7 +122,7 @@ jobs:
             --path "$REPO_PATH" \
             --dest-server "$DEST_SERVER" \
             --dest-namespace "$DEST_NAMESPACE" \
-            --sync-policy automated \
+            --sync-policy manual \
             --revision main 
 
       - name: Sync the application
