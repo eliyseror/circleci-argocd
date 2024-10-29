@@ -80,15 +80,16 @@ jobs:
           SECRET_NAME="dockerhub-registry-secret"  # Specify the secret name
       
           # Delete existing secret if it exists
-          #kubectl delete secret gitlab-registry-secret --namespace=$DEST_NAMESPACE || echo "No existing secret to delete."
+          # kubectl delete secret $SECRET_NAME --namespace=$DEST_NAMESPACE || echo "No existing secret to delete."
       
           # Create the new Docker registry secret
           kubectl create secret docker-registry $SECRET_NAME \
-            --docker-server=$DOCKER_SERVER \
-            --docker-username=$DOCKER_USERNAME \
-            --docker-password=$DOCKER_PASSWORD \
-            --docker-email=$DOCKER_EMAIL \
-            --namespace=$DEST_NAMESPACE
+            --docker-server="$DOCKER_SERVER" \
+            --docker-username="$DOCKER_USERNAME" \
+            --docker-password="$DOCKER_PASSWORD" \
+            --docker-email="$DOCKER_EMAIL" \
+            --namespace="$DEST_NAMESPACE"
+
 
 
       - name: Set up Argo CD credentials
