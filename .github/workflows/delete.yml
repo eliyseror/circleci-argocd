@@ -43,12 +43,14 @@ jobs:
           SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].SecurityGroups[0]' --output text)
           echo "SECURITY_GROUP_ID=$SECURITY_GROUP_ID" >> $GITHUB_ENV
 
+
       - name: Get Existing Security Group Ingress Rules
         id: get-ingress-rules
         run: |
           SECURITY_GROUP_ID="${{ env.SECURITY_GROUP_ID }}"
-          INGRESS_RULES=$(aws ec2 describe-security-groups --group-ids "$SECURITY_GROUP_ID" --query "SecurityGroups[0].IpPermissions[?FromPort>=0].{FromPort:FromPort, ToPort:ToPort, IpProtocol:IpProtocol}" --output json)
+          INGRESS_RULES=$(aws ec2 describe-security-groups --group-ids "$SECURITY_GROUP_ID" --query "SecurityGroups[0].IpPermissions[].{FromPort:FromPort, ToPort:ToPort, IpProtocol:IpProtocol}" --output json)
           echo "INGRESS_RULES=$INGRESS_RULES" >> $GITHUB_ENV
+
 
       - name: Revoke Security Group Ingress for Listener Ports
         run: |
