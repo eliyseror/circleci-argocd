@@ -188,23 +188,34 @@ jobs:
           LISTENER_ARN=""
       
           while true; do
+            echo "Trying to create listener on port $PORT"
             LISTENER_ARN=$(aws elbv2 create-listener \
               --load-balancer-arn "arn:aws:elasticloadbalancing:eu-north-1:***:loadbalancer/app/alb/a1ca35f7a5775050" \
               --protocol HTTP \
               --port $PORT \
               --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
               --query 'Listeners[0].ListenerArn' \
-              --output text 2>&1)  # Capture both stdout and stderr
+              --output text 2>&1)
       
-            if [ $? -eq 0 ]; then
+            EXIT_CODE=$?
+      
+            if [ $EXIT_CODE -eq 0 ]; then
               echo "Created new listener on port $PORT: ${LISTENER_ARN}"
               break
             else
               echo "Error creating listener: $LISTENER_ARN"
+              echo "Exit code: $EXIT_CODE"
               echo "Port $PORT is already in use or there was another issue. Trying next port..."
               PORT=$((PORT + 1))  # Increment the port
+      
+              # Optional: Break after a certain number of attempts to avoid infinite loop
+              if [ $PORT -gt 8100 ]; then
+                echo "Exceeded maximum port attempts. Exiting."
+                exit 1
+              fi
             fi
           done
+
 
 
       - name: Update Security Group to Allow Traffic
