@@ -146,6 +146,7 @@ jobs:
       - name: Logout from Argo CD (optional)
         run: |
           argocd logout "$ARGOCD_SERVER"
+          
       - name: Create Target Group
         id: create-target-group
         run: |
