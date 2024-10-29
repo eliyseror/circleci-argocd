@@ -111,7 +111,7 @@ jobs:
 
       - name: Create Argo CD application
         run: |
-          APP_NAME="my-app"  
+          APP_NAME="${{ github.event.client_payload.namespace }}-app"  
           REPO_URL="https://github.com/eliyseror/circleci-argocd.git"
           REPO_PATH="test"
           DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
