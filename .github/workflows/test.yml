@@ -210,6 +210,7 @@ jobs:
       
             if [ $EXIT_CODE -eq 0 ]; then
               echo "Created new listener on port $PORT: ${LISTENER_ARN}"
+              echo "LISTENER_PORT=${PORT}" >> $GITHUB_ENV  # Set the final port as an environment variable
               break
             else
               echo "Error creating listener: $LISTENER_ARN"
@@ -224,8 +225,6 @@ jobs:
               exit 1
             fi
           done
-
-
 
       - name: Update Security Group to Allow Traffic
         run: |
@@ -242,8 +241,10 @@ jobs:
             exit 1
           fi
       
+          # Use the port stored in the environment variable
+          PORT="${{ env.LISTENER_PORT }}"
+          
           # Check if the port is already allowed in the security group
-          PORT=$((PORT))  # Use the last assigned port from the previous step
           if ! aws ec2 describe-security-groups \
             --group-ids "$SECURITY_GROUP_ID" \
             --query "SecurityGroups[0].IpPermissions[?FromPort=='$PORT' && ToPort=='$PORT']" \
@@ -259,7 +260,6 @@ jobs:
           else
             echo "Port $PORT is already open in the security group."
           fi
-
       
       - name: Register Targets
         run: |
