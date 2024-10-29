@@ -23,18 +23,27 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
 
-      - name: Get Listener ARNs by ALB ARN
-        id: get-listeners
+      - name: Install Argo CD CLI
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases/latest | jq -r '.tag_name')
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+          argocd version --client
+
+      - name: Get Listener ARN and Port by ALB ARN
+        id: get-listener
         run: |
           ALB_ARN="${{ secrets.ALB_ARN }}"
-          LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[*].ListenerArn' --output text)
-          
-          if [ -z "$LISTENERS" ]; then
-            echo "No listeners found for load balancer $ALB_ARN."
+          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[0].ListenerArn' --output text)
+          if [ "$LISTENER_ARN" != "None" ]; then
+            LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER_ARN" --query 'Listeners[0].Port' --output text)
+            echo "LISTENER_PORT=${LISTENER_PORT}" >> $GITHUB_ENV
+            echo "LISTENER_ARN=${LISTENER_ARN}" >> $GITHUB_ENV
+          else
+            echo "No listener found for load balancer $ALB_ARN."
             exit 1
           fi
-
-          echo "LISTENERS=$LISTENERS" >> $GITHUB_ENV
 
       - name: Get Security Group ID
         id: get-security-group
@@ -42,7 +51,6 @@ jobs:
           ALB_ARN="${{ secrets.ALB_ARN }}"
           SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].SecurityGroups[0]' --output text)
           echo "SECURITY_GROUP_ID=$SECURITY_GROUP_ID" >> $GITHUB_ENV
-
 
       - name: Get Existing Security Group Ingress Rules
         id: get-ingress-rules
@@ -68,14 +76,6 @@ jobs:
             else
               echo "Port $LISTENER_PORT not found in security group ingress rules."
             fi
-          done
-
-
-      - name: Delete Listeners
-        run: |
-          LISTENERS="${{ env.LISTENERS }}"
-          for LISTENER in $LISTENERS; do
-            aws elbv2 delete-listener --listener-arn "$LISTENER" || echo "Failed to delete listener $LISTENER."
           done
 
       - name: Delete Argo CD Application
