@@ -79,7 +79,29 @@ jobs:
               echo "Port $LISTENER_PORT not found in security group ingress rules."
             fi
           done
-          
+
+      - name: Delete Listeners
+        run: |
+          LISTENERS="${{ env.LISTENERS }}"
+          for LISTENER in $LISTENERS; do
+            echo "Deleting listener: $LISTENER"
+            aws elbv2 delete-listener --listener-arn "$LISTENER" || echo "Failed to delete listener: $LISTENER"
+          done
+
+      - name: Delete Target Groups
+        run: |
+          # You will need to get the target group ARNs associated with the listeners
+          LISTENERS="${{ env.LISTENERS }}"
+          for LISTENER in $LISTENERS; do
+            TARGET_GROUP_ARN=$(aws elbv2 describe-listeners --listener-arn "$LISTENER" --query 'Listeners[0].DefaultActions[0].TargetGroupArn' --output text)
+            if [ "$TARGET_GROUP_ARN" != "None" ]; then
+              echo "Deleting target group: $TARGET_GROUP_ARN"
+              aws elbv2 delete-target-group --target-group-arn "$TARGET_GROUP_ARN" || echo "Failed to delete target group: $TARGET_GROUP_ARN"
+            else
+              echo "No target group found for listener: $LISTENER"
+            fi
+          done
+
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig --name eli-eks --region eu-north-1
@@ -94,10 +116,6 @@ jobs:
           
       - name: Delete Argo CD Application
         run: |
-          echo "ARGOCD_USERNAME=${ARGOCD_USERNAME}"
-          echo "ARGOCD_PASSWORD=${ARGOCD_PASSWORD}"
-          echo "ARGOCD_SERVER=${ARGOCD_SERVER}"
-          
           NAMESPACE="${{ github.event.client_payload.namespace }}"
           APP_NAME="${NAMESPACE}-app"
           argocd login "${{ env.ARGOCD_SERVER }}" --username "${{ env.ARGOCD_USERNAME }}" --password "${{ env.ARGOCD_PASSWORD }}" --insecure
