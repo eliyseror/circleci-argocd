@@ -9,15 +9,15 @@ spec:
   ingressClassName: nginx
   rules:
   - http:
-      paths: /weather
-      - path: / # Matches /weather and any subpaths
+      paths:
+      - path: /  # Matches /weather and any subpaths
         pathType: Prefix
         backend:
           service:
             name: myapp-service
             port:
               number: 80
-      - path: /hello-world-one  # Matches /hello-world-one and any subpaths
+      - path: /hello-world-one(/|$)(.*)  # Matches /hello-world-one and any subpaths
         pathType: Prefix
         backend:
           service:
