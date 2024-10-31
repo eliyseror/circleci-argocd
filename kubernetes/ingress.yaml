@@ -4,6 +4,7 @@ metadata:
   name: hello-world-ingress
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /weather  # Adjusting for the new path structure
 spec:
   ingressClassName: nginx
