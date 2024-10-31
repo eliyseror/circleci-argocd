@@ -10,7 +10,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /  # Matches /weather and any subpaths
+      - path: /weather # Matches /weather and any subpaths
         pathType: Prefix
         backend:
           service:
