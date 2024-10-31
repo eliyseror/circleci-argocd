@@ -16,6 +16,7 @@ jobs:
         run: |
           echo "Namespace: ${{ github.event.client_payload.namespace }}"
           echo "Tag: ${{ github.event.client_payload.tag }}"
+          
       - name: Install yq
         run: |
           sudo snap install yq  # Install yq if not already installed
@@ -27,23 +28,39 @@ jobs:
           echo "Updating image to: $NEW_IMAGE"
 
           # Update the image in the deployment.yaml
-          yq eval -i '.spec.template.spec.containers[0].image = "'$NEW_IMAGE'"' kubernetes/deployment.yaml
+          yq eval -i '.spec.template.spec.containers[0].image = "'$NEW_IMAGE'"' test/deployment.yaml
           echo "Updated image name in deployment.yaml to: $NEW_IMAGE"
 
       - name: Commit changes
         run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "eliyseror@gmail.com"
-          git add kubernetes/deployment.yaml
-          git commit -m "Update deployment image to ${NEW_IMAGE}"
-          git push origin main  # Change 'main' to your default branch if necessary
+      
+          # Stage changes
+          git add test/deployment.yaml
+      
+          # Check for changes and commit if any
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update deployment image to ${NEW_IMAGE}"
+            git push origin main  # Change 'main' to your default branch if necessary
+          fi
 
       - name: Configure AWS CLI
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
+          
+      - name: Install Argo CD CLI
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases/latest | jq -r '.tag_name')
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+          argocd version --client
 
       - name: Update kubeconfig
         run: |
@@ -53,45 +70,59 @@ jobs:
         id: fetch_argocd_server
         run: |
           echo "ARGOCD_SERVER=$(kubectl get service argocd-server -n argocd --output=jsonpath='{.status.loadBalancer.ingress[0].hostname}')" >> $GITHUB_ENV
-
-      - name: Create Docker registry secret
+            
+      - name: Create or Update Docker registry secret
         run: |
-          DOCKER_SERVER="registry.gitlab.com"
-          DOCKER_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
+          DOCKER_SERVER="https://index.docker.io/v1/"
+          DOCKER_USERNAME="${{ secrets.DOCKERHUB_USERNAM }}"
           DOCKER_PASSWORD="${{ secrets.DOCKERHUB_TOKEN }}"
           DOCKER_EMAIL="${{ secrets.DOCKERHUB_EMAIL }}"
-          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"  # Use the namespace from the payload
-          SECRET_NAME="gitlab-registry-secret"
+          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
+          SECRET_NAME="dockerhub-registry-secret"
 
+          # Create the new Docker registry secret
           kubectl create secret docker-registry $SECRET_NAME \
-            --docker-server=$DOCKER_SERVER \
-            --docker-username=$DOCKER_USERNAME \
-            --docker-password=$DOCKER_PASSWORD \
-            --docker-email=$DOCKER_EMAIL \
-            --namespace=$DEST_NAMESPACE || echo "Secret $SECRET_NAME already exists in namespace $DEST_NAMESPACE"
+            --docker-server="$DOCKER_SERVER" \
+            --docker-username="$DOCKER_USERNAME" \
+            --docker-password="$DOCKER_PASSWORD" \
+            --docker-email="$DOCKER_EMAIL" \
+            --namespace="$DEST_NAMESPACE" || echo "Secret '$SECRET_NAME' already exists in namespace"
 
       - name: Set up Argo CD credentials
         run: |
-          ARGOCD_USERNAME="admin"  # Replace with your username
+          ARGOCD_USERNAME="admin"  # Replace with your username if different
           ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+          echo "ARGOCD_USERNAME=${ARGOCD_USERNAME}" >> $GITHUB_ENV
           echo "ARGOCD_PASSWORD=${ARGOCD_PASSWORD}" >> $GITHUB_ENV
 
       - name: Login to Argo CD
         run: |
           argocd login "$ARGOCD_SERVER" --username "$ARGOCD_USERNAME" --password "$ARGOCD_PASSWORD" --insecure
-
+          
       - name: Add GitHub repository to Argo CD
         run: |
           argocd repo add "https://github.com/eliyseror/circleci-argocd.git" \
             --username "${{ secrets.MY_GITHUB_USERNAME }}" \
             --password "${{ secrets.MY_GITHUB_TOKEN }}" \
             --insecure-skip-server-verification
-
+            
+      - name: Create Namespace
+        run: |
+          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
+          
+          # Create the namespace if it doesn't exist
+          if ! kubectl get namespace "$DEST_NAMESPACE"; then
+            kubectl create namespace "$DEST_NAMESPACE"
+            echo "Namespace $DEST_NAMESPACE created."
+          else
+            echo "Namespace $DEST_NAMESPACE already exists."
+          fi
+          
       - name: Create Argo CD application
         run: |
-          APP_NAME="my-app"  
+          APP_NAME="${{ github.event.client_payload.namespace }}-app"  
           REPO_URL="https://github.com/eliyseror/circleci-argocd.git"
-          REPO_PATH="kubernetes"
+          REPO_PATH="test"
           DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
           DEST_SERVER="https://kubernetes.default.svc"
 
@@ -100,16 +131,136 @@ jobs:
             --path "$REPO_PATH" \
             --dest-server "$DEST_SERVER" \
             --dest-namespace "$DEST_NAMESPACE" \
-            --sync-policy automated \
+            --sync-policy manual \
             --revision main 
-
-      - name: Sync the application
-        run: |
+            
           argocd app sync "$APP_NAME"
 
       - name: Logout from Argo CD (optional)
         run: |
           argocd logout "$ARGOCD_SERVER"
+      
+      - name: Create Target Group
+        id: create-target-group
+        run: |
+          DEST_NAMESPACE="${{ github.event.client_payload.namespace }}"
+          TARGET_GROUP_NAME="${DEST_NAMESPACE}-tg"  # Create target group name from namespace
+      
+          TARGET_GROUP_ARN=$(aws elbv2 create-target-group \
+            --name "$TARGET_GROUP_NAME" \
+            --protocol HTTP \
+            --port 8000 \
+            --vpc-id vpc-044fa56fcb2b16a8f \
+            --target-type ip \
+            --health-check-protocol HTTP \
+            --health-check-path /health \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+    
+           echo "TARGET_GROUP_ARN=${TARGET_GROUP_ARN}" >> $GITHUB_ENV
+
+      - name: Get Listener ARN
+        id: get-listener
+        run: |
+          LISTENER_ARN=$(aws elbv2 describe-listeners \
+            --load-balancer-arn "${{ secrets.ALB_ARN }}" \
+            --query 'Listeners[0].ListenerArn' \
+            --output text)
+      
+          if [ "$LISTENER_ARN" == "None" ]; then
+            echo "No existing listener found."
+            echo "LISTENER_ARN=None" >> $GITHUB_ENV
+          else
+            echo "LISTENER_ARN=${LISTENER_ARN}" >> $GITHUB_ENV
+          fi
+      
+      - name: Create New Listener
+        run: |
+          BASE_PORT=8000
+          PORT=$BASE_PORT
+          LISTENER_ARN=""
+          
+          while true; do
+            LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "${{ secrets.ALB_ARN }}" --query "Listeners[?Port==\`${PORT}\`].ListenerArn" --output text)
+      
+            if [ -n "$LISTENERS" ]; then
+              echo "Port $PORT is already in use by an existing listener."
+              PORT=$((PORT + 1))  # Increment the port
+              continue
+            fi
+      
+            echo "Trying to create listener on port $PORT"
+            LISTENER_ARN=$(aws elbv2 create-listener \
+              --load-balancer-arn "${{ secrets.ALB_ARN }}" \
+              --protocol HTTP \
+              --port $PORT \
+              --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN \
+              --query 'Listeners[0].ListenerArn' \
+              --output text 2>&1)
+      
+            EXIT_CODE=$?
+      
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "Created new listener on port $PORT: ${LISTENER_ARN}"
+              echo "LISTENER_PORT=${PORT}" >> $GITHUB_ENV  # Set the final port as an environment variable
+              break
+            else
+              echo "Error creating listener: $LISTENER_ARN"
+              echo "Exit code: $EXIT_CODE"
+              echo "There was an issue creating the listener. Trying next port..."
+              PORT=$((PORT + 1))  # Increment the port
+            fi
+      
+            # Optional: Break after a certain number of attempts to avoid infinite loop
+            if [ $PORT -gt 8100 ]; then
+              echo "Exceeded maximum port attempts. Exiting."
+              exit 1
+            fi
+          done
+
+      - name: Update Security Group to Allow Traffic
+        run: |
+          ALB_ARN="${{ secrets.ALB_ARN }}"
+          
+          # Get the Security Group associated with the ALB
+          SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers \
+            --load-balancer-arns "$ALB_ARN" \
+            --query 'LoadBalancers[0].SecurityGroups[0]' \
+            --output text)
+      
+          if [ "$SECURITY_GROUP_ID" == "None" ]; then
+            echo "No Security Group found for the ALB."
+            exit 1
+          fi
+      
+          # Use the port stored in the environment variable
+          PORT="${{ env.LISTENER_PORT }}"
+          
+          # Check if the port is already allowed in the security group
+          if ! aws ec2 describe-security-groups \
+            --group-ids "$SECURITY_GROUP_ID" \
+            --query "SecurityGroups[0].IpPermissions[?FromPort=='$PORT' && ToPort=='$PORT']" \
+            --output text | grep -q "ALLOWS"; then
+      
+            echo "Port $PORT is not open. Updating security group to allow traffic on this port."
+            # Allow all traffic on the specified port
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$SECURITY_GROUP_ID" \
+              --protocol tcp \
+              --port "$PORT" \
+              --cidr 0.0.0.0/0  # Open to all traffic (consider your security requirements)
+          else
+            echo "Port $PORT is already open in the security group."
+          fi
+      
+      - name: Register Targets
+        run: |
+          PODS=$(kubectl get pods -n ${{ github.event.client_payload.namespace }} -o jsonpath='{.items[*].status.podIP}')
+          for POD_IP in $PODS; do
+            aws elbv2 register-targets \
+              --target-group-arn $TARGET_GROUP_ARN \
+              --targets Id=$POD_IP
+          done
 
       - name: Final message
         run: echo "Application $APP_NAME created and synced in namespace $DEST_NAMESPACE!"

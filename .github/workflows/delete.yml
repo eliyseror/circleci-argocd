@@ -1,0 +1,117 @@
+name: Delete Resources
+
+on:
+  repository_dispatch:
+    types: [delete]
+
+jobs:
+  delete-resources:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Display Payload
+        run: |
+          echo "Namespace: ${{ github.event.client_payload.namespace }}"
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+        
+
+      - name: Install Argo CD CLI
+        run: |
+          VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases/latest | jq -r '.tag_name')
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+          argocd version --client
+          
+      - name: Get Listener ARN and Port by ALB ARN
+        id: get-listener
+        run: |
+          ALB_ARN="${{ secrets.ALB_ARN }}"
+        
+          LISTENERS=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[*].ListenerArn' --output text)
+        
+          if [ -z "$LISTENERS" ]; then
+            echo "No listeners found for load balancer $ALB_ARN."
+            exit 1
+          fi    
+        
+          echo "LISTENERS=$LISTENERS" >> $GITHUB_ENV  
+
+
+      - name: Get Security Group ID
+        id: get-security-group
+        run: |
+          ALB_ARN="${{ secrets.ALB_ARN }}"
+          SECURITY_GROUP_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].SecurityGroups[0]' --output text)
+          echo "SECURITY_GROUP_ID=$SECURITY_GROUP_ID" >> $GITHUB_ENV
+
+      - name: Get Existing Security Group Ingress Rules
+        id: get-ingress-rules
+        run: |
+          SECURITY_GROUP_ID="${{ env.SECURITY_GROUP_ID }}"
+          INGRESS_RULES=$(aws ec2 describe-security-groups --group-ids "$SECURITY_GROUP_ID" --query "SecurityGroups[0].IpPermissions[].FromPort" --output text)
+          echo "INGRESS_RULES=$INGRESS_RULES" >> $GITHUB_ENV
+
+      - name: Revoke Security Group Ingress for Listener Ports
+        run: |
+          SECURITY_GROUP_ID="${{ env.SECURITY_GROUP_ID }}"
+          LISTENERS="${{ env.LISTENERS }}"
+          IFS=' ' read -r -a PORTS <<< "${{ env.INGRESS_RULES }}"
+
+          for LISTENER in $LISTENERS; do
+            LISTENER_PORT=$(aws elbv2 describe-listeners --listener-arn "$LISTENER" --query 'Listeners[0].Port' --output text)
+            echo "Revoking ingress for port $LISTENER_PORT"
+
+            # Check if the listener port exists in the security group ingress rules
+            if [[ " ${PORTS[*]} " =~ " ${LISTENER_PORT} " ]]; then
+              # Revoke the ingress rule for this port
+              aws ec2 revoke-security-group-ingress --group-id "$SECURITY_GROUP_ID" --protocol tcp --port "$LISTENER_PORT" --cidr 0.0.0.0/0 || echo "Ingress rule for port $LISTENER_PORT not found."
+            else
+              echo "Port $LISTENER_PORT not found in security group ingress rules."
+            fi
+          done
+
+      - name: Delete Listeners
+        run: |
+          LISTENERS="${{ env.LISTENERS }}"
+          for LISTENER in $LISTENERS; do
+            echo "Deleting listener: $LISTENER"
+            aws elbv2 delete-listener --listener-arn "$LISTENER" || echo "Failed to delete listener: $LISTENER"
+          done
+
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name eli-eks --region eu-north-1
+          
+      - name: Set up Argo CD credentials
+        run: |
+          ARGOCD_USERNAME="admin"  # Replace with your username if different
+          ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+          echo "ARGOCD_USERNAME=${ARGOCD_USERNAME}" >> $GITHUB_ENV
+          echo "ARGOCD_PASSWORD=${ARGOCD_PASSWORD}" >> $GITHUB_ENV
+          echo "ARGOCD_SERVER=$(kubectl get service argocd-server -n argocd --output=jsonpath='{.status.loadBalancer.ingress[0].hostname}')" >> $GITHUB_ENV
+          
+      - name: Delete Argo CD Application
+        run: |
+          NAMESPACE="${{ github.event.client_payload.namespace }}"
+          APP_NAME="${NAMESPACE}-app"
+          argocd login "${{ env.ARGOCD_SERVER }}" --username "${{ env.ARGOCD_USERNAME }}" --password "${{ env.ARGOCD_PASSWORD }}" --insecure
+          argocd app delete "$APP_NAME" --cascade --yes
+
+      - name: Delete Kubernetes Namespace
+        run: |
+          NAMESPACE="${{ github.event.client_payload.namespace }}"
+          kubectl delete namespace "$NAMESPACE"
+
+      - name: Final message
+        run: echo "Resources for namespace ${{ github.event.client_payload.namespace }} have been deleted."
