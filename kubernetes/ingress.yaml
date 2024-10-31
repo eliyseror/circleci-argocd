@@ -10,14 +10,14 @@ spec:
   rules:
   - http:
       paths:
-      - path: /weather(/|$)(.*)  # Matches /weather and any subpaths
+      - path: /weather # Matches /weather and any subpaths
         pathType: Prefix
         backend:
           service:
             name: myapp-service
             port:
               number: 80
-      - path: /hello-world-one(/|$)(.*)  # Matches /hello-world-one and any subpaths
+      - path: /hello-world-one  # Matches /hello-world-one and any subpaths
         pathType: Prefix
         backend:
           service:
