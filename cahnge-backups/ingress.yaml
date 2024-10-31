@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb  # Specify the ALB Ingress class
+    alb.ingress.kubernetes.io/scheme: internet-facing  # Change to "internal" if needed
+spec:
+  rules:
+    - host: myapp.example.com  # Change to your desired domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myapp-service  # The name of your service
+                port:
+                  number: 80  # The port exposed by your service
+
