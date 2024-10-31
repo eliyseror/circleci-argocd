@@ -11,11 +11,18 @@ spec:
   rules:
   - http:
       paths:
-      - path: /
+      - path: /weather
         pathType: Prefix
         backend:
           service:
             name: myapp-service
+            port:
+              number: 80
+      - path: /hello-world-one
+        pathType: Prefix
+        backend:
+          service:
+            name: aks-helloworld-one
             port:
               number: 80
 
