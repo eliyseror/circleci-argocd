@@ -3,8 +3,6 @@ kind: Ingress
 metadata:
   name: hello-world-ingress
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.org/rewrites: "serviceName=myapp-service rewrite=/;serviceName=hello-world-one rewrite=/"
 spec:
   ingressClassName: nginx
   rules:
