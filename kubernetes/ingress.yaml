@@ -4,20 +4,20 @@ metadata:
   name: hello-world-ingress
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/rewrite-target: /$1  # Adjusting for the new path structure
 spec:
   ingressClassName: nginx
   rules:
   - http:
       paths:
-      - path: /weather
+      - path: /weather(/|$)(.*)  # Matches /weather and any subpaths
         pathType: Prefix
         backend:
           service:
             name: myapp-service
             port:
               number: 80
-      - path: /hello-world-one
+      - path: /hello-world-one(/|$)(.*)  # Matches /hello-world-one and any subpaths
         pathType: Prefix
         backend:
           service:
