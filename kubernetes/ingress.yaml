@@ -4,7 +4,7 @@ metadata:
   name: hello-world-ingress
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/rewrite-target: /$1  # Adjusting for the new path structure
+    nginx.ingress.kubernetes.io/rewrite-target: /  # Adjusting for the new path structure
 spec:
   ingressClassName: nginx
   rules:
