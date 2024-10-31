@@ -12,14 +12,14 @@ spec:
   rules:
   - http:
       paths:
-      - path: /weather(/|$)(.*)
+      - path: /weather
         pathType: Prefix
         backend:
           service:
             name: myapp-service
             port:
               number: 80
-      - path: /hello-world-one(/|$)(.*)
+      - path: /hello-world-one
         pathType: Prefix
         backend:
           service:
