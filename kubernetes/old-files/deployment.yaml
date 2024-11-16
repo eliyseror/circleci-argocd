@@ -12,8 +12,8 @@ spec:
       labels:
         app: myapp
     spec:
-      imagePullSecrets:
-        - name: gitlab-registry-secret # Reference your GitLab registry secret here
+     # imagePullSecrets:
+     #   - name: gitlab-registry-secret # Reference your GitLab registry secret here
       containers:
         - name: myapp-container
           image: "eliseror/new_repo:argocd_8" #"851725362124.dkr.ecr.eu-north-1.amazonaws.com/my_ecr_repo_1:restaurant-app-4" 

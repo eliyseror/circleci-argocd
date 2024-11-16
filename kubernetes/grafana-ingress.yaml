@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring  # Replace with your Grafana namespace if different
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: grafana-eli.duckdns.org  # Replace with your desired domain or external IP
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: my-k8s-prom-stack-grafana  # Grafana service name
+                port:
+                  number: 80  # The port Grafana is exposed on

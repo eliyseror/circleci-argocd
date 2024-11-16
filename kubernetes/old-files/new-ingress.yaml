@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  namespace: default # Change to your desired namespace if necessary
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: / # Ensures that paths are rewritten correctly
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myapp-service
+                port:
+                  number: 80
