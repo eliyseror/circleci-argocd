@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: my.weather-app-eli.com #weather-app-eli.duckdns.org  # Subdomain for app2
+    - host: weather-app-eli.duckdns.org  # Subdomain for app2
       http:
         paths:
           - path: /
